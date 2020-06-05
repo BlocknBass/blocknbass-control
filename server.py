@@ -63,6 +63,11 @@ def on_data_out(fd, sockets, data_out, epoll):
 def ola_data_cb(data, clients, data_out, epoll):
     light_message = light_pb2.LightMessage()
     light_message.pan = data[0]
+    light_message.tilt = data[1]
+    light_message.red = data[4]
+    light_message.green = data[5]
+    light_message.blue = data[6]
+    light_message.white = data[7]
     message = message_pb2.Message()
     message.key = "light"
     message.message.Pack(light_message)
