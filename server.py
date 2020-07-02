@@ -197,6 +197,7 @@ def handle_build_packet(fd, clients, data_out, epoll, message):
         print("{}: got unexpected build light packet!".format(build_message.type))
 
 def handle_clients(fd, clients, data_in, data_out, epoll):
+    from google.protobuf.message import DecodeError
     if len(data_in[fd]) == 0:
         return
 
@@ -206,7 +207,10 @@ def handle_clients(fd, clients, data_in, data_out, epoll):
 
     msg_buf = data_in[fd][offset:offset + msg_len]
     message = message_pb2.Message()
-    message.ParseFromString(msg_buf)
+    try:
+        message.ParseFromString(msg_buf)
+    except DecodeError:
+        return
     data_in[fd] = data_in[fd][offset + msg_len:]
 
     key = message.key
