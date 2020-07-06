@@ -209,6 +209,7 @@ def handle_clients(fd, clients, data_in, data_out, epoll):
     message = message_pb2.Message()
     try:
         message.ParseFromString(msg_buf)
+        data_in[fd] = data_in[fd][offset + msg_len:]
     except DecodeError:
         return
     data_in[fd] = data_in[fd][offset + msg_len:]
