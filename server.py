@@ -13,6 +13,8 @@ import json
 import os
 
 lights = []
+audio_on = False
+audio_url = ""
 
 class Fixture:
     def __init__(self, id, x, y, z):
@@ -85,6 +87,15 @@ def init_connection(server, sockets, clients, data_in, data_out, epoll):
         light_message.lights.extend([fixture.to_message()])
 
     data_out[fd] = make_message(light_message, "light_update")
+
+    global audio_url
+    global audio_on
+    if audio_on == True:
+        audio_message = audio_pb2.AudioMessage()
+        audio_message.type = audio_pb2.PLAY_AUDIO
+        audio_message.url = audio_url
+        data_out[fd] += make_message(audio_message, "audio")
+
     print("Accepted new client {:02d}".format(fd))
 
 def on_data_in(socket, data_in, epoll):
@@ -213,6 +224,17 @@ def handle_audio_packet(fd, clients, data_out, epoll, message):
     for fd in clients:
         data_out[fd] += data
         epoll.modify(fd, select.EPOLLOUT)
+
+    if audio_message.type == audio_pb2.PLAY_AUDIO:
+        global audio_on
+        global audio_url
+        audio_on = True
+        audio_url = audio_message.url
+    elif audio_message.type == audio_pb2.STOP_AUDIO:
+        global audio_on
+        global audio_url
+        audio_on = False
+        audio_url = ""
 
 def handle_clients(fd, clients, data_in, data_out, epoll):
     from google.protobuf.message import DecodeError
