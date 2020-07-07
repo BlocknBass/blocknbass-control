@@ -225,14 +225,12 @@ def handle_audio_packet(fd, clients, data_out, epoll, message):
         data_out[fd] += data
         epoll.modify(fd, select.EPOLLOUT)
 
+    global audio_on
+    global audio_url
     if audio_message.type == audio_pb2.PLAY_AUDIO:
-        global audio_on
-        global audio_url
         audio_on = True
         audio_url = audio_message.url
     elif audio_message.type == audio_pb2.STOP_AUDIO:
-        global audio_on
-        global audio_url
         audio_on = False
         audio_url = ""
 
