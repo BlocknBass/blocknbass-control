@@ -8,6 +8,7 @@ import select
 from core import message_pb2
 from light import light_pb2
 from build import build_pb2
+from audio import audio_pb2
 import json
 import os
 
@@ -205,6 +206,14 @@ def handle_build_packet(fd, clients, data_out, epoll, message):
     else:
         print("{}: got unexpected build light packet!".format(build_message.type))
 
+def handle_audio_packet(fd, clients, data_out, epoll, message):
+    audio_message = audio_pb2.AudioMessage()
+    message.message.Unpack(audio_message)
+    data = make_message(audio_message, "audio")
+    for fd in clients:
+        data_out[fd] += data
+        epoll.modify(fd, select.EPOLLOUT)
+
 def handle_clients(fd, clients, data_in, data_out, epoll):
     from google.protobuf.message import DecodeError
     if len(data_in[fd]) == 0:
@@ -226,6 +235,8 @@ def handle_clients(fd, clients, data_in, data_out, epoll):
     key = message.key
     if key == "build":
         handle_build_packet(fd, clients, data_out, epoll, message)
+    elif key == "audio":
+        handle_audio_packet(fd, clients, data_out, epoll, message)
     else:
         print("Unexpected packet received: {}!".format(key))
 
