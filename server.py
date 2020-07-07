@@ -104,9 +104,18 @@ def on_data_in(socket, data_in, epoll):
     # TODO
 
 def on_data_out(fd, sockets, data_out, epoll):
-    no_bytes = sockets[fd].send(data_out[fd])
+    try:
+        no_bytes = sockets[fd].send(data_out[fd])
+    except ConnectionResetError:
+        print("Connection reset while sending!")
+        return -1
+    except timeout:
+        print("Client timed out while sending!")
+        return -1
+
     data_out[fd] = data_out[fd][no_bytes:]
     epoll.modify(fd, select.EPOLLIN)
+    return 0
 
 def make_message(user_message, key):
     message = message_pb2.Message()
@@ -267,7 +276,12 @@ def main():
                         clients.remove(fd)
                         del sockets[fd], data_in[fd], data_out[fd]
                 elif event & select.EPOLLOUT:
-                    on_data_out(fd, sockets, data_out, epoll)
+                    if on_data_out(fd, sockets, data_out, epoll) < 0:
+                        print("Disconnecting client {:02d}!".format(fd))
+                        epoll.unregister(fd)
+                        sockets[fd].close()
+                        clients.remove(fd)
+                        del sockets[fd], data_in[fd], data_out[fd]
 
             for fd in clients:
                 handle_clients(fd, clients, data_in, data_out, epoll)
