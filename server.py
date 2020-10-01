@@ -265,7 +265,7 @@ def main():
         global lights
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(("0.0.0.0", 6969))
-        server.listen(5)
+        server.listen(128)
         server.setblocking(0)
         server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         print("Listening on 0.0.0.0:6969")
