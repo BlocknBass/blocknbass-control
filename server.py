@@ -11,6 +11,7 @@ from build import build_pb2
 from audio import audio_pb2
 import json
 import os
+import errno
 
 lights = []
 audio_on = False
@@ -76,7 +77,7 @@ def init_connection(server, sockets, clients, data_in, data_out, epoll):
     socket.setblocking(0)
 
     fd = socket.fileno()
-    epoll.register(fd, select.EPOLLOUT)
+    epoll.register(fd, select.EPOLLOUT | select.EPOLLIN | select.EPOLLET)
     sockets[fd] = socket
     clients.append(fd)
     data_in[fd] = b''
@@ -108,6 +109,9 @@ def on_data_in(socket, data_in, epoll):
     except timeout:
         print("Client timed out!")
         return -1
+    except TimeoutError:
+        print("Client timed out!")
+        return -1
 
     if data_in[fd] == b'':
         return -1
@@ -115,18 +119,17 @@ def on_data_in(socket, data_in, epoll):
     return 0
     # TODO
 
-def on_data_out(fd, sockets, data_out, epoll):
+def on_data_out(fd, sockets, data_out):
     try:
         no_bytes = sockets[fd].send(data_out[fd])
-    except ConnectionResetError:
-        print("Connection reset while sending!")
-        return -1
-    except timeout:
-        print("Client timed out while sending!")
-        return -1
+    except socket.error as e:
+        err = e.args[0]
+        if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+            return 0
+        else:
+            return -1
 
     data_out[fd] = data_out[fd][no_bytes:]
-    epoll.modify(fd, select.EPOLLIN)
     return 0
 
 def make_message(user_message, key):
@@ -148,6 +151,7 @@ def ola_data_cb(data, clients, data_out, epoll):
         light_message.id = id
         light_message.pan = data[0 + id*11]
         light_message.tilt = data[1 + id*11]
+        light_message.dimmer = data[2 + id*11]
         light_message.red = data[4 + id*11]
         light_message.green = data[5 + id*11]
         light_message.blue = data[6 + id*11]
@@ -155,7 +159,6 @@ def ola_data_cb(data, clients, data_out, epoll):
         msg_data = make_message(light_message, "light")
         for fd in clients:
             data_out[fd] += msg_data
-            epoll.modify(fd, select.EPOLLOUT)
 
 def handle_build_light(fd, clients, data_out, epoll, build_message):
     global lights
@@ -178,8 +181,7 @@ def handle_build_light(fd, clients, data_out, epoll, build_message):
     light_message.lights.extend([light_message_data])
     data = make_message(light_message, "light_update")
     for fd in clients:
-        data_out[fd] = data
-        epoll.modify(fd, select.EPOLLOUT)
+        data_out[fd] += data
 
 def handle_list_lights(fd, clients, data_out, epoll, build_message):
     global lights
@@ -189,8 +191,7 @@ def handle_list_lights(fd, clients, data_out, epoll, build_message):
         ret_message.lights.extend([fixture.to_message()])
 
     data = make_message(ret_message, "build")
-    data_out[fd] = data
-    epoll.modify(fd, select.EPOLLOUT)
+    data_out[fd] += data
 
 def handle_remove_light(fd, clients, data_out, epoll, build_message):
     global lights
@@ -200,8 +201,7 @@ def handle_remove_light(fd, clients, data_out, epoll, build_message):
     light_message.lights.extend([fixture.to_message()])
     data = make_message(light_message, "light_update")
     for fd in clients:
-        data_out[fd] = data
-        epoll.modify(fd, select.EPOLLOUT)
+        data_out[fd] += data
 
     lights = list(filter(lambda x: x.id != build_message.lights[0].id, lights))
 
@@ -223,7 +223,6 @@ def handle_audio_packet(fd, clients, data_out, epoll, message):
     data = make_message(audio_message, "audio")
     for fd in clients:
         data_out[fd] += data
-        epoll.modify(fd, select.EPOLLOUT)
 
     global audio_on
     global audio_url
@@ -307,7 +306,7 @@ def main():
                         clients.remove(fd)
                         del sockets[fd], data_in[fd], data_out[fd]
                 elif event & select.EPOLLOUT:
-                    if on_data_out(fd, sockets, data_out, epoll) < 0:
+                    if on_data_out(fd, sockets, data_out) < 0:
                         print("Disconnecting client {:02d}!".format(fd))
                         epoll.unregister(fd)
                         sockets[fd].close()
@@ -316,6 +315,13 @@ def main():
 
             for fd in clients:
                 handle_clients(fd, clients, data_in, data_out, epoll)
+                if len(data_out[fd]) > 0:
+                    if on_data_out(fd, sockets, data_out) < 0:
+                        print("Disconnecting client {:02d}!".format(fd))
+                        epoll.unregister(fd)
+                        sockets[fd].close()
+                        clients.remove(fd)
+                        del sockets[fd], data_in[fd], data_out[fd]
 
 def cleanup():
     with open("lights.json", "w") as json_file:
